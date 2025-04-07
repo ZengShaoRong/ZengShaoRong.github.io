@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>智慧城市交通态势监测系统</title>
+    <link rel="stylesheet" href="https://js.arcgis.com/4.32/esri/themes/light/main.css">
+    <style>
+        * { margin:0; padding:0; box-sizing: border-box; }
+        #app { 
+            display: grid;
+            grid-template-rows: 80px 1fr 120px;
+            height: 100vh;
+        }
+
+        /* 页眉样式 */
+        header {
+            background: #2c3e50;
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        /* 地图容器 */
+        #mapViewDiv {
+            position: relative;
+            background: #f8f9fa;
+        }
+
+        /* 底图库样式 */
+        .basemap-gallery {
+            background: white;
+            padding: 15px;
+            display: flex;
+            gap: 15px;
+            overflow-x: auto;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+        }
+        .basemap-thumbnail {
+            flex: 0 0 160px;
+            height: 90px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            background-size: cover;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+        }
+        .basemap-thumbnail.active {
+            border-color: #3498db;
+            box-shadow: 0 3px 12px rgba(52,152,219,0.3);
+        }
+        .basemap-thumbnail span {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            padding: 4px;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        /* 比例尺样式覆盖 */
+        .esri-scale-bar__line {
+            background: #2c3e50 !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>🚦 实时交通态势监测系统</h1>
+            <div class="user-controls" style="margin-left: auto;">
+                <button class="esri-widget-button">🔔 预警信息</button>
+                <button class="esri-widget-button">⚙️ 系统设置</button>
+            </div>
+        </header>
+        
+        <div id="mapViewDiv"></div>
+        
+        <aside class="basemap-gallery">
+            <div class="basemap-thumbnail active" data-basemap="streets-vector" 
+                 style="background-image: url('https://js.arcgis.com/4.32/esri/themes/base/images/basemaps/streets.jpg')">
+                <span>街道地图</span>
+            </div>
+            <div class="basemap-thumbnail" data-basemap="satellite"
+                 style="background-image: url('https://js.arcgis.com/4.32/esri/themes/base/images/basemaps/satellite.jpg')">
+                <span>卫星影像</span>
+            </div>
+            <div class="basemap-thumbnail" data-basemap="dark-gray-vector"
+                 style="background-image: url('https://js.arcgis.com/4.32/esri/themes/base/images/basemaps/dark-gray.jpg')">
+                <span>深灰底图</span>
+            </div>
+        </aside>
+    </div>
+
+    <script src="https://js.arcgis.com/4.32/"></script>
+    <script>
+    require([
+        "esri/Map", "esri/views/MapView", "esri/layers/FeatureLayer",
+        "esri/widgets/Legend", "esri/widgets/ScaleBar",
+        "esri/widgets/Search", "esri/widgets/LayerList",
+        "esri/intl"
+    ], (Map, MapView, FeatureLayer, Legend, ScaleBar, Search, LayerList, intl) => {
+
+        // 设置本地化配置[7](@ref)
+        intl.setLocale('zh-CN');
+
+        // 加载用户专题图层
+        const trafficLayer = new FeatureLayer({
+            url: "https://www.geoscenonline.cn/geoscene/rest/services/Hosted/交通态势/FeatureServer/0",
+            outFields: ["*"],
+            popupTemplate: {
+                title: "交通监测点 {STATION_ID}",
+                content: [{
+                    type: "fields",
+                    fieldInfos: [
+                        { fieldName: "SPEED", label: "平均车速(km/h)", format: { digitSeparator: true } },
+                        { fieldName: "VOLUME", label: "车流量(辆/小时)", format: { digitSeparator: true } },
+                        { fieldName: "STATUS", label: "交通状态" }
+                    ]
+                }]
+            }
+        });
+
+        // 初始化地图
+        const map = new Map({
+            basemap: "streets-vector",
+            layers: [trafficLayer]
+        });
+
+        const view = new MapView({
+            container: "mapViewDiv",
+            map: map,
+            center: [116.38, 39.9],
+            zoom: 12,
+            ui: { components: [] }
+        });
+
+        // 比例尺配置[6,7](@ref)
+        const scaleBar = new ScaleBar({
+            view: view,
+            unit: "metric",
+            style: "ruler"
+        });
+        view.ui.add(scaleBar, {
+            position: "bottom-left",
+            index: 2
+        });
+
+        
+        // 图例配置[8](@ref)
+        const legend = new Legend({
+            view: view,
+            style: "card",
+            layerInfos: [{
+                layer: trafficLayer,
+                title: "交通状态图例",
+                symbolHeight: 24,
+                symbolWidth: 24
+            }]
+        });
+        view.ui.add(legend, "top-right");
+
+        // 搜索组件
+        const searchWidget = new Search({
+            view: view,
+            popupEnabled: false
+        });
+        view.ui.add(searchWidget, "top-left");
+
+        // 图层列表配置[8](@ref)
+        const layerList = new LayerList({
+            view: view,
+            listItemCreatedFunction: (event) => {
+                const item = event.item;
+                if (item.title === "交通态势") {
+                    item.panel = {
+                        content: `
+                            <div class="traffic-info">
+                                <h4>实时交通事件</h4>
+                                <div class="traffic-event">
+                                    <span class="traffic-status">拥堵</span>
+                                    <span>G106京通快速路（东向西）</span>
+                                </div>
+                                <div class="traffic-event">
+                                    <span class="traffic-status">缓行</span>
+                                    <span>S66南苑路收费站入口</span>
+                                </div>
+                            </div>
+                        `,
+                        type: "custom"
+                    };
+                }
+            }
+        });
+        view.ui.add(layerList, "bottom-right");
+
+        // 底图切换功能[8](@ref)
+        document.querySelectorAll(".basemap-thumbnail").forEach(btn => {
+            btn.addEventListener("click", () => {
+                document.querySelectorAll(".basemap-thumbnail").forEach(item => {
+                    item.classList.remove("active");
+                });
+                map.basemap = btn.dataset.basemap;
+                btn.classList.add("active");
+            });
+        });
+
+        // 自适应布局
+        window.addEventListener("resize", () => view.resize());
+    });
+    </script>
+</body>
+</html>
